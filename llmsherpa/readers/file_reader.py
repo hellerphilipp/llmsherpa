@@ -1,6 +1,5 @@
-import urllib3
+import httpx
 import os
-import json
 from urllib.parse import urlparse
 from llmsherpa.readers import Document
 
@@ -24,26 +23,27 @@ class LayoutPDFReader:
                 API url for LLM Sherpa. Use customer url for your private instance here            
         """
         self.parser_api_url = parser_api_url
-        self.download_connection = urllib3.PoolManager()
-        self.api_connection = urllib3.PoolManager()
 
     def _download_pdf(self, pdf_url):
-        
         # some servers only allow browers user_agent to download
         user_agent = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/77.0.3865.90 Safari/537.36"
         # add authorization headers if using external API (see upload_pdf for an example)
         download_headers = {"User-Agent": user_agent}
-        download_response = self.download_connection.request("GET", pdf_url, headers=download_headers)
-        file_name = os.path.basename(urlparse(pdf_url).path)
-        # note you can change the file name here if you'd like to something else
-        if download_response.status == 200:
-            pdf_file = (file_name, download_response.data, 'application/pdf')
-        return pdf_file
+
+        with httpx.Client() as client:
+            response = client.get(pdf_url, headers=download_headers)
+            response.raise_for_status()
+
+            # note you can change the file name here if you'd like to something else
+            file_name = os.path.basename(urlparse(pdf_url).path)
+            pdf_file = (file_name, response.content, 'application/pdf')
+            return pdf_file
 
     def _parse_pdf(self, pdf_file):
         auth_header = {}
-        parser_response = self.api_connection.request("POST", self.parser_api_url, fields={'file': pdf_file})
-        return parser_response
+        with httpx.Client() as client:
+            response = client.post(self.parser_api_url, files={'file': pdf_file}, headers=auth_header)
+            return response.json(), response.status_code
 
     def read_pdf(self, path_or_url, contents=None):
         """
@@ -68,9 +68,8 @@ class LayoutPDFReader:
                 with open(path_or_url, "rb") as f:
                     file_data = f.read()
                     pdf_file = (file_name, file_data, 'application/pdf')
-        parser_response = self._parse_pdf(pdf_file)
-        if parser_response.status > 200:
-            raise ValueError(f"{parser_response.data}")
-        response_json = json.loads(parser_response.data.decode("utf-8"))
-        blocks = response_json['return_dict']['result']['blocks']
+        parser_response_json, parser_response_status = self._parse_pdf(pdf_file)
+        if parser_response_status > 200:
+            raise ValueError(f"{parser_response_json}")
+        blocks = parser_response_json['return_dict']['result']['blocks']
         return Document(blocks)

@@ -12,7 +12,7 @@ setup(
     license='MIT',
     packages=find_packages(),
     install_requires=[
-        "urllib3"
+        "httpx",
     ],
     classifiers=[
         'Development Status :: 5 - Production/Stable',
