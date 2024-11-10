@@ -13,6 +13,7 @@ setup(
     packages=find_packages(),
     install_requires=[
         "httpx",
+        "aiofiles",
     ],
     classifiers=[
         'Development Status :: 5 - Production/Stable',
